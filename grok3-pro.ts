@@ -264,6 +264,8 @@ async function main() {
 
   // Mark final deliberation step complete in progress bar
   bar.increment()
+  // Adjust total to reflect actual work in case chains finished early
+  bar.setTotal((bar as any).value)
   bar.stop()
 }
 
