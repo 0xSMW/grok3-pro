@@ -3,6 +3,55 @@
 import React, { useEffect, useState } from 'react'
 import { render, Box, Text, useApp } from 'ink'
 import Spinner from 'ink-spinner'
+import TextInput from 'ink-text-input'
+
+interface SettingsMenuProps {
+  defaultModels: string[]
+  defaultEvaluator: string
+  onSubmit: (models: string[], evaluator: string) => void
+}
+
+const SettingsMenu = ({
+  defaultModels,
+  defaultEvaluator,
+  onSubmit,
+}: SettingsMenuProps) => {
+  const [step, setStep] = useState<'models' | 'evaluator'>('models')
+  const [models, setModels] = useState(defaultModels.join(','))
+  const [evaluator, setEvaluator] = useState(defaultEvaluator)
+
+  if (step === 'models') {
+    return (
+      <Box flexDirection="column">
+        <Text>Models to evaluate (comma separated):</Text>
+        <TextInput
+          value={models}
+          onChange={setModels}
+          onSubmit={() => setStep('evaluator')}
+        />
+      </Box>
+    )
+  }
+
+  return (
+    <Box flexDirection="column">
+      <Text>Evaluator model:</Text>
+      <TextInput
+        value={evaluator}
+        onChange={setEvaluator}
+        onSubmit={() =>
+          onSubmit(
+            models
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean),
+            evaluator,
+          )
+        }
+      />
+    </Box>
+  )
+}
 import { generateText } from 'ai'
 import { xai } from '@ai-sdk/xai'
 import { openai } from '@ai-sdk/openai'
@@ -54,12 +103,12 @@ async function evaluate(
 }
 
 interface Props {
-  model: string
+  models: string[]
   evaluator: string
   promptsPath: string
 }
 
-const App = ({ model, evaluator, promptsPath }: Props) => {
+const App = ({ models, evaluator, promptsPath }: Props) => {
   const [status, setStatus] = useState('Starting…')
   const { exit } = useApp()
 
@@ -70,36 +119,44 @@ const App = ({ model, evaluator, promptsPath }: Props) => {
         const prompts: PromptItem[] = JSON.parse(
           await fs.readFile(promptsPath, 'utf8'),
         )
-        const modelInstance = getModel(model)
-        const results = [] as any[]
-        for (const item of prompts) {
-          setStatus(`Asking ${item.id}…`)
-          const { text: answer } = await generateText({
-            model: modelInstance,
-            prompt: item.question,
-            temperature: 0.7,
-          })
-          const evalRes = await evaluate(
-            evaluator,
-            item.question,
-            answer.trim(),
-            item.type,
-          )
-          results.push({
-            id: item.id,
-            question: item.question,
-            answer: answer.trim(),
-            ...evalRes,
-          })
-        }
-        const summary: Record<string, number> = {}
-        for (const r of results) {
-          for (const [k, v] of Object.entries(r.scores)) {
-            summary[k] = (summary[k] ?? 0) + v
+        const results: Record<string, any[]> = {}
+        for (const spec of models) {
+          const modelInstance = getModel(spec)
+          const perModel: any[] = []
+          for (const item of prompts) {
+            setStatus(`Asking ${spec} - ${item.id}…`)
+            const { text: answer } = await generateText({
+              model: modelInstance,
+              prompt: item.question,
+              temperature: 0.7,
+            })
+            const evalRes = await evaluate(
+              evaluator,
+              item.question,
+              answer.trim(),
+              item.type,
+            )
+            perModel.push({
+              id: item.id,
+              question: item.question,
+              answer: answer.trim(),
+              ...evalRes,
+            })
           }
+          results[spec] = perModel
         }
-        for (const k in summary) {
-          summary[k] = summary[k] / results.length
+        const summary: Record<string, Record<string, number>> = {}
+        for (const [spec, list] of Object.entries(results)) {
+          const agg: Record<string, number> = {}
+          for (const r of list) {
+            for (const [k, v] of Object.entries(r.scores)) {
+              agg[k] = (agg[k] ?? 0) + v
+            }
+          }
+          for (const k in agg) {
+            agg[k] = agg[k] / list.length
+          }
+          summary[spec] = agg
         }
         await fs.writeFile(
           'results.json',
@@ -125,22 +182,56 @@ const App = ({ model, evaluator, promptsPath }: Props) => {
 
 function parseArgs() {
   const args = process.argv.slice(2)
-  let target = 'xai:grok-3-mini'
-  let evaluator = target
+  let targets: string[] = ['xai:grok-3-mini']
+  let evaluator = ''
   let promptsPath = 'prompts.json'
+  let interactive = false
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
-    if (arg === '--model') {
-      target = args[++i]
+    if (arg === '--model' || arg === '--models') {
+      targets = args[++i]
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
     } else if (arg === '--evaluator') {
       evaluator = args[++i]
     } else if (arg === '--prompts') {
       promptsPath = args[++i]
+    } else if (arg === '--interactive') {
+      interactive = true
     }
   }
-  return { target, evaluator, promptsPath }
+  if (!evaluator) evaluator = targets[0]
+  return { targets, evaluator, promptsPath, interactive }
 }
 
-const { target, evaluator, promptsPath } = parseArgs()
+const { targets, evaluator, promptsPath, interactive } = parseArgs()
 
-render(<App model={target} evaluator={evaluator} promptsPath={promptsPath} />)
+const Root = () => {
+  const [settings, setSettings] = useState<null | {
+    models: string[]
+    evaluator: string
+  }>(interactive ? null : { models: targets, evaluator })
+
+  if (!settings) {
+    return (
+      <SettingsMenu
+        defaultModels={targets}
+        defaultEvaluator={evaluator}
+        onSubmit={(models, evalModel) =>
+          setSettings({ models, evaluator: evalModel })
+        }
+      />
+    )
+  }
+
+  return (
+    <App
+      models={settings.models}
+      evaluator={settings.evaluator}
+      promptsPath={promptsPath}
+    />
+  )
+}
+
+render(<Root />)

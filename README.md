@@ -18,7 +18,7 @@ export OPENAI_API_KEY="sk-your-openai-key"
 pnpm start -- --model xai:grok-3-mini
 ```
 
-Use `--evaluator` to choose which model scores the answers and `--prompts` to load a custom prompts file.
+Run without flags to launch an interactive menu for selecting the model(s) to benchmark and the evaluator model. Use `--evaluator` to choose which model scores the answers and `--prompts` to load a custom prompts file.
 
 ---
 
