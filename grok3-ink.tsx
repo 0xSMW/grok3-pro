@@ -2,12 +2,90 @@
 
 import React, { useState, useEffect } from 'react'
 import { render, Text, Box, Static } from 'ink'
+import TextInput from 'ink-text-input'
 import { generateText, streamText } from 'ai'
 import { xai } from '@ai-sdk/xai'
 import * as fs from 'node:fs/promises'
 
 // Types for results
 type Result = { answer: string; rationale: string }
+
+function SettingsMenu({
+  defaults,
+  onSubmit,
+}: {
+  defaults: {
+    question: string
+    k: number
+    filePath: string
+    systemPath: string
+  }
+  onSubmit: (opts: {
+    question: string
+    k: number
+    filePath: string
+    systemPath: string
+  }) => void | Promise<void>
+}) {
+  const [step, setStep] = useState(0)
+  const [question, setQuestion] = useState(defaults.question)
+  const [k, setK] = useState(String(defaults.k))
+  const [filePath, setFilePath] = useState(defaults.filePath)
+  const [systemPath, setSystemPath] = useState(defaults.systemPath)
+
+  if (step === 0) {
+    return (
+      <Box>
+        <Text>Question: </Text>
+        <TextInput
+          value={question}
+          onChange={setQuestion}
+          onSubmit={() => setStep(1)}
+        />
+      </Box>
+    )
+  }
+  if (step === 1) {
+    return (
+      <Box>
+        <Text>Variants (k): </Text>
+        <TextInput value={k} onChange={setK} onSubmit={() => setStep(2)} />
+      </Box>
+    )
+  }
+  if (step === 2) {
+    return (
+      <Box>
+        <Text>File path (optional): </Text>
+        <TextInput
+          value={filePath}
+          onChange={setFilePath}
+          onSubmit={() => setStep(3)}
+        />
+      </Box>
+    )
+  }
+  if (step === 3) {
+    return (
+      <Box>
+        <Text>System prompt path: </Text>
+        <TextInput
+          value={systemPath}
+          onChange={setSystemPath}
+          onSubmit={() => {
+            onSubmit({
+              question,
+              k: Number(k) || defaults.k,
+              filePath: filePath.trim(),
+              systemPath: systemPath.trim(),
+            })
+          }}
+        />
+      </Box>
+    )
+  }
+  return null
+}
 
 function App({
   question,
@@ -188,24 +266,48 @@ function parseArgs() {
 
 ;(async () => {
   const { questionArg, k, filePath, systemPath } = parseArgs()
-  let question: string
 
-  if (filePath) {
-    question = (await fs.readFile(filePath, 'utf8')).trim()
-  } else {
-    question = questionArg ?? 'What is 101*3?'
+  function Root() {
+    const [opts, setOpts] = useState<{
+      question: string
+      k: number
+      filePath: string
+      systemPrompt: string
+    } | null>(null)
+
+    if (!opts) {
+      return (
+        <SettingsMenu
+          defaults={{
+            question: questionArg ?? 'What is 101*3?',
+            k,
+            filePath: filePath,
+            systemPath: systemPath || 'system.txt',
+          }}
+          onSubmit={async (cfg) => {
+            const systemPrompt = await resolveSystemPrompt(
+              cfg.systemPath || 'system.txt',
+            )
+            setOpts({
+              question: cfg.question,
+              k: cfg.k,
+              filePath: cfg.filePath,
+              systemPrompt,
+            })
+          }}
+        />
+      )
+    }
+
+    return (
+      <App
+        question={opts.question}
+        k={opts.k}
+        filePath={opts.filePath || undefined}
+        systemPrompt={opts.systemPrompt}
+      />
+    )
   }
 
-  const systemPrompt = systemPath
-    ? await resolveSystemPrompt(systemPath)
-    : await resolveSystemPrompt('system.txt')
-
-  render(
-    <App
-      question={question}
-      k={k}
-      filePath={filePath || undefined}
-      systemPrompt={systemPrompt}
-    />,
-  )
+  render(<Root />)
 })()
