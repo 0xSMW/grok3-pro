@@ -92,17 +92,40 @@ function App({
   k,
   filePath,
   systemPrompt,
+  debug,
 }: {
   question: string
   k: number
   filePath?: string
   systemPrompt: string
+  debug?: boolean
 }) {
   const [logs, setLogs] = useState<string[]>([])
   const [finalAnswer, setFinalAnswer] = useState<string>('')
 
   useEffect(() => {
-    const log = (msg: string) => setLogs((prev) => [...prev, msg])
+    let debugPath = ''
+    const debugWrite = async (msg: string) => {
+      if (!debug) return
+      if (!debugPath) {
+        const ts = new Date().toISOString().replace(/[:.]/g, '-')
+        debugPath = `debug-${ts}.log`
+        await fs.writeFile(debugPath, `Query: ${question}\n`, 'utf8')
+        if (systemPrompt) {
+          await fs.appendFile(
+            debugPath,
+            `System prompt: ${systemPrompt}\n`,
+            'utf8',
+          )
+        }
+        setLogs((prev) => [...prev, `Debug output -> ${debugPath}`])
+      }
+      await fs.appendFile(debugPath, msg + '\n', 'utf8')
+    }
+    const log = (msg: string) => {
+      setLogs((prev) => [...prev, msg])
+      debugWrite(msg).catch(() => {})
+    }
 
     async function run() {
       log(`Query: ${question}`)
@@ -189,9 +212,12 @@ function App({
       })
 
       setFinalAnswer('')
+      let final = ''
       for await (const chunk of finalStream.textStream) {
+        final += chunk
         setFinalAnswer((a) => a + chunk)
       }
+      await debugWrite(`Final answer: ${final}`)
       log('')
       const ensembleRationale = ((await finalStream.reasoning) ?? '').trim()
       if (ensembleRationale) {
@@ -211,7 +237,7 @@ function App({
     }
 
     run().catch((err) => log(String(err)))
-  }, [question, k, filePath, systemPrompt])
+  }, [question, k, filePath, systemPrompt, debug])
 
   return (
     <Box flexDirection="column">
@@ -245,6 +271,7 @@ function parseArgs() {
   let k = 9
   let filePath = ''
   let systemPath = ''
+  let debug = false
 
   for (let i = 0; i < cli.length; i++) {
     const arg = cli[i]
@@ -254,6 +281,8 @@ function parseArgs() {
     } else if (arg === '--system' || arg === '-s') {
       systemPath = cli[i + 1] ?? ''
       i++
+    } else if (arg === '--debug' || arg === '-d') {
+      debug = true
     } else if (questionArg === undefined) {
       questionArg = arg
     } else if (!Number.isNaN(Number(arg))) {
@@ -261,11 +290,11 @@ function parseArgs() {
     }
   }
 
-  return { questionArg, k, filePath, systemPath }
+  return { questionArg, k, filePath, systemPath, debug }
 }
 
 ;(async () => {
-  const { questionArg, k, filePath, systemPath } = parseArgs()
+  const { questionArg, k, filePath, systemPath, debug } = parseArgs()
 
   function Root() {
     const [opts, setOpts] = useState<{
@@ -305,6 +334,7 @@ function parseArgs() {
         k={opts.k}
         filePath={opts.filePath || undefined}
         systemPrompt={opts.systemPrompt}
+        debug={debug}
       />
     )
   }

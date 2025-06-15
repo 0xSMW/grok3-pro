@@ -10,6 +10,8 @@ declare const process: {
 /**
  * grok3-pro.ts
  *
+ * @deprecated Use grok3-ink.tsx instead.
+ *
  * Usage:
  *   XAI_API_KEY="your_api_key" ts-node grok3-pro.ts "Your question" [k]
  *   XAI_API_KEY="your_api_key" ts-node grok3-pro.ts --file path/to/file.txt [k]
@@ -39,7 +41,7 @@ import {
   finalAggregation,
   MAX_PASSES,
   type ScoredResult,
-} from './src/tot.js'
+} from '../src/tot.js'
 
 // Constants and result type imported from the algorithm module
 
@@ -61,7 +63,6 @@ async function streamReasoningSummary(reasoning: string) {
   console.log()
 }
 
-
 /** Main entry */
 async function main() {
   const [, , ...cli] = process.argv
@@ -71,6 +72,7 @@ async function main() {
   let k = 9
   let filePath = ''
   let systemPath = ''
+  let debug = false
 
   for (let i = 0; i < cli.length; i++) {
     const arg = cli[i]
@@ -86,6 +88,8 @@ async function main() {
         throw new Error('--system flag requires a path argument')
       }
       i++
+    } else if (arg === '--debug' || arg === '-d') {
+      debug = true
     } else if (questionArg === undefined) {
       questionArg = arg
     } else if (!Number.isNaN(Number(arg))) {
@@ -123,8 +127,24 @@ async function main() {
     // ignore if file not found
   }
 
-  console.log(`\nQuery: ${question.slice(0, 20)}${question.length > 20 ? '…' : ''}`)
+  console.log(
+    `\nQuery: ${question.slice(0, 20)}${question.length > 20 ? '…' : ''}`,
+  )
   console.log(`Sampling ${k} variants …\n`)
+
+  let debugLog: ((msg: string) => Promise<void>) | undefined
+  if (debug) {
+    const ts = new Date().toISOString().replace(/[:.]/g, '-')
+    const debugPath = `debug-${ts}.log`
+    debugLog = async (m: string) => {
+      await fs.appendFile(debugPath, m + '\n', 'utf8')
+    }
+    console.log(`Debug output -> ${debugPath}`)
+    await fs.writeFile(debugPath, `Query: ${question}\n`, 'utf8')
+    if (systemPrompt) {
+      await fs.appendFile(debugPath, `System prompt: ${systemPrompt}\n`, 'utf8')
+    }
+  }
 
   // Progress bar estimates the worst case (initial answer + critique + revision per pass)
   const bar = new SingleBar(
@@ -134,7 +154,14 @@ async function main() {
   bar.start(k * (1 + MAX_PASSES * 2) + 2, 0)
 
   // Launch k parallel Tree of Thought chains
-  const results = await treeOfThoughtSearch(question, systemPrompt, k, bar)
+  const results = await treeOfThoughtSearch(
+    question,
+    systemPrompt,
+    k,
+    bar,
+    MAX_PASSES,
+    debugLog,
+  )
 
   if (results[0]?.rationale) {
     await streamReasoningSummary(results[0].rationale)
@@ -162,7 +189,7 @@ async function main() {
   )
 
   const { answer: ensembleAnswer, reasoning: ensembleRationale } =
-    await finalAggregation(question, topThree, systemPrompt)
+    await finalAggregation(question, topThree, systemPrompt, debugLog)
 
   if (ensembleRationale) {
     console.log('--- Grok 3 Final Reasoning ---')
@@ -171,6 +198,10 @@ async function main() {
   }
 
   console.log('\nFinal answer:', ensembleAnswer)
+  if (debugLog) {
+    await debugLog(`Final reasoning: ${ensembleRationale}`)
+    await debugLog(`Final answer: ${ensembleAnswer}`)
+  }
 
   // Append answer (and reasoning) back to the file if file-mode is enabled
   if (usingFile) {
@@ -180,6 +211,9 @@ async function main() {
     }
     await fs.appendFile(filePath, append, 'utf8')
     console.log(`\nAppended final answer to '${filePath}'.`)
+    if (debugLog) {
+      await debugLog(`Appended answer to file: ${filePath}`)
+    }
   }
 
   // Mark final deliberation step complete in progress bar
