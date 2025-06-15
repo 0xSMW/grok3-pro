@@ -1,7 +1,17 @@
 {
 	"dependencies": {
-		"ai": "^4.3.16",
 		"@ai-sdk/xai": "^1.2.16",
+		"ai": "^4.3.16",
+		"cli-progress": "^3.12.0",
 		"ts-node": "^10.9.2"
+	},
+	"devDependencies": {
+		"@types/cli-progress": "^3.11.6",
+		"@types/node": "^20.14.2",
+		"prettier": "^3.3.0",
+		"typescript": "^5.4.5"
+	},
+	"scripts": {
+		"format": "prettier --write ."
 	}
 }
