@@ -63,6 +63,7 @@ async function main() {
   let target = 'xai:grok-3-mini'
   let evaluator = target
   let promptsPath = 'prompts.json'
+  let bestOf = 1
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
@@ -72,6 +73,8 @@ async function main() {
       evaluator = args[++i]
     } else if (arg === '--prompts') {
       promptsPath = args[++i]
+    } else if (arg === '--best-of') {
+      bestOf = parseInt(args[++i], 10) || 1
     }
   }
 
@@ -82,22 +85,36 @@ async function main() {
 
   const results: ResultItem[] = []
   for (const item of prompts) {
-    const { text: answer } = await generateText({
-      model,
-      prompt: item.question,
-      temperature: 0.7,
-    })
-    const evalRes = await evaluate(
-      evaluator,
-      item.question,
-      answer.trim(),
-      item.type,
-    )
+
+    const attempts: any[] = []
+    for (let i = 0; i < bestOf; i++) {
+      const { text: answer } = await generateText({
+        model,
+        prompt: item.question,
+        temperature: 0.7,
+      })
+      const evalRes = await evaluate(
+        evaluator,
+        item.question,
+        answer.trim(),
+        item.type,
+      )
+      attempts.push({ answer: answer.trim(), ...evalRes })
+    }
+    const agg: Record<string, number> = {}
+    for (const att of attempts) {
+      for (const [k, v] of Object.entries(att.scores)) {
+        agg[k] = (agg[k] ?? 0) + v
+      }
+    }
+    for (const k in agg) {
+      agg[k] = agg[k] / attempts.length
+    }
     results.push({
       id: item.id,
       question: item.question,
-      answer: answer.trim(),
-      ...evalRes,
+      attempts,
+      scores: agg,
     })
   }
 
