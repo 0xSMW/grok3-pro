@@ -15,7 +15,7 @@ export XAI_API_KEY="sk-your-xai-key"
 export OPENAI_API_KEY="sk-your-openai-key"
 
 # 3 – run the benchmark using Grok 3 Mini
-ts-node eval-harness.ts --model xai:grok-3-mini
+pnpm start -- --model xai:grok-3-mini
 ```
 
 Use `--evaluator` to choose which model scores the answers and `--prompts` to load a custom prompts file.
