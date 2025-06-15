@@ -56,6 +56,8 @@ import { generateText } from 'ai'
 import { xai } from '@ai-sdk/xai'
 import { openai } from '@ai-sdk/openai'
 import * as fs from 'node:fs/promises'
+import { existsSync, readFileSync } from 'node:fs'
+import { parse as parseYaml } from 'yaml'
 
 interface PromptItem {
   id: string
@@ -194,6 +196,21 @@ function parseArgs() {
   let evaluator = ''
   let promptsPath = 'prompts.json'
   let interactive = false
+
+  if (existsSync('config.yaml')) {
+    try {
+      const data = parseYaml(readFileSync('config.yaml', 'utf8')) as any
+      if (Array.isArray(data.models)) {
+        targets = data.models.map((m: any) => String(m))
+      }
+      if (typeof data.evaluator === 'string') {
+        evaluator = data.evaluator
+      }
+      if (typeof data.prompts === 'string') {
+        promptsPath = data.prompts
+      }
+    } catch {}
+  }
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
     if (arg === '--model' || arg === '--models') {

@@ -1,0 +1,4 @@
+models:
+  - xai:grok-3-mini
+evaluator: xai:grok-3-mini
+prompts: prompts.json
