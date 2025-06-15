@@ -4,21 +4,27 @@ import React, { useEffect, useState } from 'react'
 import { render, Box, Text, useApp } from 'ink'
 import Spinner from 'ink-spinner'
 import TextInput from 'ink-text-input'
+import SelectInput from 'ink-select-input'
 
 interface SettingsMenuProps {
   defaultModels: string[]
   defaultEvaluator: string
-  onSubmit: (models: string[], evaluator: string) => void
+  defaultBestOf: number
+  onSubmit: (models: string[], evaluator: string, bestOf: number) => void
 }
 
 const SettingsMenu = ({
   defaultModels,
   defaultEvaluator,
+  defaultBestOf,
   onSubmit,
 }: SettingsMenuProps) => {
-  const [step, setStep] = useState<'models' | 'evaluator'>('models')
+  const [step, setStep] = useState<
+    'models' | 'evaluator' | 'bestOfSelect' | 'bestOfCustom'
+  >('models')
   const [models, setModels] = useState(defaultModels.join(','))
   const [evaluator, setEvaluator] = useState(defaultEvaluator)
+  const [bestOf, setBestOf] = useState(String(defaultBestOf))
 
   if (step === 'models') {
     return (
@@ -32,21 +38,56 @@ const SettingsMenu = ({
       </Box>
     )
   }
+  if (step === 'evaluator') {
+    return (
+      <Box flexDirection="column">
+        <Text>Evaluator model:</Text>
+        <TextInput
+          value={evaluator}
+          onChange={setEvaluator}
+          onSubmit={() => setStep('bestOfSelect')}
+        />
+      </Box>
+    )
+  }
+
+  const modelList = models
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  if (step === 'bestOfSelect') {
+    const items = [
+      { label: '1', value: '1' },
+      { label: '3', value: '3' },
+      { label: '5', value: '5' },
+      { label: 'Custom…', value: 'custom' },
+    ]
+    return (
+      <Box flexDirection="column">
+        <Text>Number of samples per prompt:</Text>
+        <SelectInput
+          items={items}
+          onSelect={(item) => {
+            if (item.value === 'custom') {
+              setStep('bestOfCustom')
+            } else {
+              onSubmit(modelList, evaluator, Number(item.value))
+            }
+          }}
+        />
+      </Box>
+    )
+  }
 
   return (
     <Box flexDirection="column">
-      <Text>Evaluator model:</Text>
+      <Text>Custom best-of value:</Text>
       <TextInput
-        value={evaluator}
-        onChange={setEvaluator}
+        value={bestOf}
+        onChange={setBestOf}
         onSubmit={() =>
-          onSubmit(
-            models
-              .split(',')
-              .map((s) => s.trim())
-              .filter(Boolean),
-            evaluator,
-          )
+          onSubmit(modelList, evaluator, parseInt(bestOf, 10) || 1)
         }
       />
     </Box>
@@ -114,9 +155,10 @@ interface Props {
   models: string[]
   evaluator: string
   promptsPath: string
+  bestOf: number
 }
 
-const App = ({ models, evaluator, promptsPath }: Props) => {
+const App = ({ models, evaluator, promptsPath, bestOf }: Props) => {
   const [status, setStatus] = useState('Starting…')
   const { exit } = useApp()
 
@@ -132,23 +174,36 @@ const App = ({ models, evaluator, promptsPath }: Props) => {
           const modelInstance = getModel(spec)
           const perModel: ResultItem[] = []
           for (const item of prompts) {
-            setStatus(`Asking ${spec} - ${item.id}…`)
-            const { text: answer } = await generateText({
-              model: modelInstance,
-              prompt: item.question,
-              temperature: 0.7,
-            })
-            const evalRes = await evaluate(
-              evaluator,
-              item.question,
-              answer.trim(),
-              item.type,
-            )
+            const attempts: any[] = []
+            for (let i = 0; i < bestOf; i++) {
+              setStatus(`Asking ${spec} - ${item.id} (${i + 1}/${bestOf})…`)
+              const { text: answer } = await generateText({
+                model: modelInstance,
+                prompt: item.question,
+                temperature: 0.7,
+              })
+              const evalRes = await evaluate(
+                evaluator,
+                item.question,
+                answer.trim(),
+                item.type,
+              )
+              attempts.push({ answer: answer.trim(), ...evalRes })
+            }
+            const agg: Record<string, number> = {}
+            for (const att of attempts) {
+              for (const [k, v] of Object.entries(att.scores)) {
+                agg[k] = (agg[k] ?? 0) + v
+              }
+            }
+            for (const k in agg) {
+              agg[k] = agg[k] / attempts.length
+            }
             perModel.push({
               id: item.id,
               question: item.question,
-              answer: answer.trim(),
-              ...evalRes,
+              attempts,
+              scores: agg,
             })
           }
           results[spec] = perModel
@@ -194,6 +249,7 @@ function parseArgs() {
   let evaluator = ''
   let promptsPath = 'prompts.json'
   let interactive = false
+  let bestOf = 1
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
     if (arg === '--model' || arg === '--models') {
@@ -207,27 +263,31 @@ function parseArgs() {
       promptsPath = args[++i]
     } else if (arg === '--interactive') {
       interactive = true
+    } else if (arg === '--best-of') {
+      bestOf = parseInt(args[++i], 10) || 1
     }
   }
   if (!evaluator) evaluator = targets[0]
-  return { targets, evaluator, promptsPath, interactive }
+  return { targets, evaluator, promptsPath, interactive, bestOf }
 }
 
-const { targets, evaluator, promptsPath, interactive } = parseArgs()
+const { targets, evaluator, promptsPath, interactive, bestOf } = parseArgs()
 
 const Root = () => {
   const [settings, setSettings] = useState<null | {
     models: string[]
     evaluator: string
-  }>(interactive ? null : { models: targets, evaluator })
+    bestOf: number
+  }>(interactive ? null : { models: targets, evaluator, bestOf })
 
   if (!settings) {
     return (
       <SettingsMenu
         defaultModels={targets}
         defaultEvaluator={evaluator}
-        onSubmit={(models, evalModel) =>
-          setSettings({ models, evaluator: evalModel })
+        defaultBestOf={bestOf}
+        onSubmit={(models, evalModel, bOf) =>
+          setSettings({ models, evaluator: evalModel, bestOf: bOf })
         }
       />
     )
@@ -238,6 +298,7 @@ const Root = () => {
       models={settings.models}
       evaluator={settings.evaluator}
       promptsPath={promptsPath}
+      bestOf={settings.bestOf}
     />
   )
 }
