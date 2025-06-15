@@ -143,6 +143,14 @@ async function evaluate(
   return { scores, explanation }
 }
 
+interface ResultItem {
+  id: string
+  question: string
+  answer: string
+  scores: Record<string, number>
+  explanation: string
+}
+
 interface Props {
   models: string[]
   evaluator: string
@@ -161,10 +169,10 @@ const App = ({ models, evaluator, promptsPath, bestOf }: Props) => {
         const prompts: PromptItem[] = JSON.parse(
           await fs.readFile(promptsPath, 'utf8'),
         )
-        const results: Record<string, any[]> = {}
+        const results: Record<string, ResultItem[]> = {}
         for (const spec of models) {
           const modelInstance = getModel(spec)
-          const perModel: any[] = []
+          const perModel: ResultItem[] = []
           for (const item of prompts) {
             const attempts: any[] = []
             for (let i = 0; i < bestOf; i++) {

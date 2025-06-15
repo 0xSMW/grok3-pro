@@ -11,6 +11,14 @@ interface PromptItem {
   question: string
 }
 
+interface ResultItem {
+  id: string
+  question: string
+  answer: string
+  scores: Record<string, number>
+  explanation: string
+}
+
 function getModel(spec: string) {
   const [provider, model] = spec.includes(':')
     ? spec.split(':', 2)
@@ -75,8 +83,9 @@ async function main() {
   )
   const model = getModel(target)
 
-  const results = []
+  const results: ResultItem[] = []
   for (const item of prompts) {
+
     const attempts: any[] = []
     for (let i = 0; i < bestOf; i++) {
       const { text: answer } = await generateText({
