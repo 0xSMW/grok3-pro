@@ -150,7 +150,7 @@ async function main() {
   }
   let best = "";
   let bestVotes = -1;
-  for (const [ans, votes] of counts) {
+  for (const [ans, votes] of Array.from(counts.entries())) {
     if (votes > bestVotes) {
       best = ans;
       bestVotes = votes;
@@ -219,6 +219,8 @@ async function main() {
 
   // Mark final deliberation step complete in progress bar
   bar.increment();
+  // Adjust total to reflect actual work in case tasks finished early
+  bar.setTotal((bar as any).value);
   bar.stop();
 }
 
