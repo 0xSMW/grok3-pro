@@ -184,7 +184,7 @@ async function main() {
     // ignore if file not found
   }
 
-  console.log(`\nQuery: ${question}`)
+  console.log(`\nQuery: ${question.slice(0, 20)}${question.length > 20 ? '…' : ''}`)
   console.log(`Sampling ${k} variants …\n`)
 
   // Progress bar estimates the worst case (initial answer + critique + revision per pass)
