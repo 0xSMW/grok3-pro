@@ -12,7 +12,9 @@ interface PromptItem {
 }
 
 function getModel(spec: string) {
-  const [provider, model] = spec.includes(':') ? spec.split(':', 2) : ['xai', spec]
+  const [provider, model] = spec.includes(':')
+    ? spec.split(':', 2)
+    : ['xai', spec]
   if (provider === 'xai') return xai(model)
   if (provider === 'openai') return openai(model)
   throw new Error(`Unknown provider '${provider}'`)
@@ -31,7 +33,11 @@ async function evaluate(
 
   const prompt = `You are an expert analyst evaluating an AI response.\n\nQuestion:\n${question}\n\nAnswer:\n${answer}\n\nAssess the answer on the following criteria: ${criteria}. Rate each from 0-5 and reply with a JSON object where keys are the criteria names and values are the scores. After the JSON, provide a short paragraph summarizing strengths and weaknesses.`
 
-  const { text } = await generateText({ model: getModel(evalModel), prompt, temperature: 0 })
+  const { text } = await generateText({
+    model: getModel(evalModel),
+    prompt,
+    temperature: 0,
+  })
   const firstBrace = text.indexOf('{')
   const lastBrace = text.lastIndexOf('}')
   let scores: Record<string, number> = {}
@@ -49,6 +55,7 @@ async function main() {
   let target = 'xai:grok-3-mini'
   let evaluator = target
   let promptsPath = 'prompts.json'
+  let bestOf = 1
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
@@ -58,17 +65,48 @@ async function main() {
       evaluator = args[++i]
     } else if (arg === '--prompts') {
       promptsPath = args[++i]
+    } else if (arg === '--best-of') {
+      bestOf = parseInt(args[++i], 10) || 1
     }
   }
 
-  const prompts: PromptItem[] = JSON.parse(await fs.readFile(promptsPath, 'utf8'))
+  const prompts: PromptItem[] = JSON.parse(
+    await fs.readFile(promptsPath, 'utf8'),
+  )
   const model = getModel(target)
 
   const results = []
   for (const item of prompts) {
-    const { text: answer } = await generateText({ model, prompt: item.question, temperature: 0.7 })
-    const evalRes = await evaluate(evaluator, item.question, answer.trim(), item.type)
-    results.push({ id: item.id, question: item.question, answer: answer.trim(), ...evalRes })
+    const attempts: any[] = []
+    for (let i = 0; i < bestOf; i++) {
+      const { text: answer } = await generateText({
+        model,
+        prompt: item.question,
+        temperature: 0.7,
+      })
+      const evalRes = await evaluate(
+        evaluator,
+        item.question,
+        answer.trim(),
+        item.type,
+      )
+      attempts.push({ answer: answer.trim(), ...evalRes })
+    }
+    const agg: Record<string, number> = {}
+    for (const att of attempts) {
+      for (const [k, v] of Object.entries(att.scores)) {
+        agg[k] = (agg[k] ?? 0) + v
+      }
+    }
+    for (const k in agg) {
+      agg[k] = agg[k] / attempts.length
+    }
+    results.push({
+      id: item.id,
+      question: item.question,
+      attempts,
+      scores: agg,
+    })
   }
 
   const summary: Record<string, number> = {}
@@ -81,7 +119,10 @@ async function main() {
     summary[k] = summary[k] / results.length
   }
 
-  await fs.writeFile('results.json', JSON.stringify({ results, summary }, null, 2))
+  await fs.writeFile(
+    'results.json',
+    JSON.stringify({ results, summary }, null, 2),
+  )
   console.log('Wrote results.json')
 }
 

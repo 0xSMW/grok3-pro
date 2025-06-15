@@ -15,10 +15,11 @@ export XAI_API_KEY="sk-your-xai-key"
 export OPENAI_API_KEY="sk-your-openai-key"
 
 # 3 – run the benchmark using Grok 3 Mini
-pnpm start -- --model xai:grok-3-mini
+pnpm start -- --model xai:grok-3-mini --best-of 3
 ```
 
 Run without flags to launch an interactive menu for selecting the model(s) to benchmark and the evaluator model. Use `--evaluator` to choose which model scores the answers and `--prompts` to load a custom prompts file.
+Use `--best-of` to evaluate multiple samples per prompt and average the results.
 
 ---
 
