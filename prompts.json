@@ -1,0 +1,32 @@
+[
+  {
+    "id": "internet-history",
+    "type": "factual",
+    "question": "Detail the key events and figures involved in the development of the internet from the 1960s to the 1990s."
+  },
+  {
+    "id": "quantum-entanglement",
+    "type": "factual",
+    "question": "Explain the principles behind quantum entanglement and its potential applications in computing and communication."
+  },
+  {
+    "id": "south-china-sea",
+    "type": "factual",
+    "question": "Analyze the current tensions in the South China Sea, including the involved countries, their claims, and potential outcomes."
+  },
+  {
+    "id": "fusion-breakthrough",
+    "type": "hypothetical",
+    "question": "Imagine a breakthrough in fusion energy is achieved. Discuss the potential global impacts on energy markets, geopolitics, and climate change."
+  },
+  {
+    "id": "ai-china",
+    "type": "factual",
+    "question": "Provide a comprehensive report on the state of artificial intelligence research in China, including key institutions, researchers, and recent advancements."
+  },
+  {
+    "id": "franck-report",
+    "type": "factual",
+    "question": "Summarize the key points of the Manhattan Project’s Franck Report and its significance."
+  }
+]
